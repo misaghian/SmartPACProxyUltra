@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Smart PAC Ultra",
+  "version": "3.4.0",
+  "description": "مدیریت هوشمند، ساده و حرفه‌ای پروکسی و PAC با رابط فارسی، پروفایل‌ها، Popup کامل، بررسی آپدیت GitHub و آماده‌سازی Release.",
+  "permissions": [
+    "proxy",
+    "storage",
+    "webRequest",
+    "webNavigation",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Smart PAC Ultra",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-off-16.png",
+      "32": "assets/icons/icon-off-32.png",
+      "48": "assets/icons/icon-off-48.png",
+      "128": "assets/icons/icon-off-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/icon-smart-16.png",
+    "32": "assets/icons/icon-smart-32.png",
+    "48": "assets/icons/icon-smart-48.png",
+    "128": "assets/icons/icon-smart-128.png"
+  }
+}
