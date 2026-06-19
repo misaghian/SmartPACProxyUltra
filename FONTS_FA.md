@@ -1,17 +1,21 @@
-# فونت رابط کاربری
+# راهنمای فونت VazirFD
 
-رابط کاربری با اولویت فونت VazirFD تنظیم شده است:
-
-```css
-font-family: "Vazir FD", VazirFD, Vazirmatn, Tahoma, Arial, sans-serif;
-```
-
-مسیرهای آماده در CSS:
+برای استفاده از فونت VazirFD، فایل‌های فونت را در یکی از این مسیرها قرار دهید:
 
 ```text
-assets/ui/VazirFD.woff2
-assets/ui/VazirFD.woff
-assets/ui/VazirFD.ttf
+ui/fonts/VazirFD.woff2
+ui/fonts/VazirFD.woff
+ui/fonts/VazirFD.ttf
 ```
 
-فایل‌های فونت در این بسته قرار داده نشده‌اند. برای استفاده نهایی، فایل‌های فونت را کنار `assets/ui/ui.css` قرار دهید.
+یا:
+
+```text
+assets/ui/fonts/VazirFD.woff2
+assets/ui/fonts/VazirFD.woff
+assets/ui/fonts/VazirFD.ttf
+```
+
+CSS نسخه v3.4.1 هر دو مسیر را پشتیبانی می‌کند.
+
+برای رعایت حقوق فایل فونت، فایل‌های فونت داخل ZIP خروجی بازنشر نشده‌اند.
