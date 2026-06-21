@@ -17,7 +17,7 @@ def should_include(path: Path) -> bool:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--version', default='3.4.0')
+    parser.add_argument('--version', default='3.4.2')
     parser.add_argument('--root', default='.')
     args = parser.parse_args()
     root = Path(args.root).resolve()
