@@ -1,23 +1,22 @@
-/* Smart PAC Ultra UI Kit Pro v3.4.0 */
+/* Smart PAC Ultra v3.5.0 - Compact UI Kit */
 const $root = document.getElementById('app');
-const VIEW = ($root && $root.dataset.view) || (document.body.classList.contains('popup') ? 'popup' : 'app');
+const VIEW = ($root && $root.dataset.view) || 'popup';
 let state = null;
-let activePopupTab = 'profile';
+let activeTab = 'home';
 let lastTestResult = null;
 let lastUpdateResult = null;
 
 const MODES = [
-  ['direct','مستقیم','send'],
-  ['proxy','پروکسی','globe'],
-  ['pac','PAC','file'],
-  ['system','پروکسی سیستم','monitor'],
-  ['smart','هوشمند','bot']
+  ['direct','مستقیم','send','بدون پروکسی'],
+  ['proxy','پروکسی','globe','همه ترافیک با پروکسی'],
+  ['pac','PAC','file','لیست مستقیم + بقیه پروکسی'],
+  ['system','سیستم','monitor','استفاده از پروکسی سیستم'],
+  ['smart','هوشمند','bot','مستقیم؛ فقط موارد لازم با پروکسی']
 ];
-const PROXY_TYPES = ['HTTP','HTTPS','SOCKS4','SOCKS5','MTPROTO'];
-
+const TYPES = ['HTTP','HTTPS','SOCKS4','SOCKS5','MTPROTO'];
 function icon(name){
-  const i = {
-    logo:`<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" opacity=".16" d="M24 3 42 13v22L24 45 6 35V13L24 3Z"/><path fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M34 16 24 10 14 16v7l20 10v-7L14 16M14 32l10 6 10-6"/></svg>`,
+  const m={
+    logo:`<svg viewBox="0 0 48 48"><path d="M24 4 42 14v20L24 44 6 34V14L24 4Z" opacity=".16"/><path d="M34 16 24 10 14 16v6l20 10v-6L14 16M14 32l10 6 10-6"/></svg>`,
     send:`<svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>`,
     globe:`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>`,
     file:`<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>`,
@@ -38,7 +37,6 @@ function icon(name){
     import:`<svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>`,
     export:`<svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 21h16"/></svg>`,
     download:`<svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>`,
-    rocket:`<svg viewBox="0 0 24 24"><path d="M5 14c-2 2-2 5-2 5s3 0 5-2"/><path d="M14 5c3-3 7-2 7-2s1 4-2 7l-8 8-5-5 8-8Z"/><path d="M15 9h.01"/></svg>`,
     reset:`<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/></svg>`,
     diag:`<svg viewBox="0 0 24 24"><path d="M8 3v5a4 4 0 0 0 8 0V3"/><path d="M12 12v3a4 4 0 0 1-8 0v-2M20 13v2a4 4 0 0 1-8 0"/><path d="M6 3v4M18 3v4"/></svg>`,
     info:`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>`,
@@ -46,184 +44,45 @@ function icon(name){
     chart:`<svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16"/><path d="M8 16v-5M12 16V8M16 16v-8"/></svg>`,
     close:`<svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>`
   };
-  return i[name] || i.info;
+  return m[name] || m.info;
 }
-function esc(s){return String(s ?? '').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
-function msg(payload){return chrome.runtime.sendMessage(payload);} 
-function listToText(list){return (list||[]).join('\n');}
-function textToList(text){return String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);} 
-function getSettings(){return state.settings || {};}
-function getProfile(){return state.activeProfile || {};} 
-function effective(){return state.effectiveLists || {};}
-function currentSuggestion(){const s=getSettings();return s.suggestions && s.suggestions.length ? s.suggestions[0] : null;}
-function modeLabel(mode){return ({direct:'مستقیم کامل',proxy:'پروکسی کامل',pac:'PAC',system:'پروکسی سیستم',smart:'هوشمند'}[mode]||'هوشمند');}
-function currentVersion(){return (state && state.extensionVersion) || chrome.runtime.getManifest().version || '3.4.0';}
-function renderTestResult(){
-  if(!lastTestResult) return '<div id="testResult" class="popup-test-result stable"><div class="result-placeholder">نتیجه تست اتصال اینجا نمایش داده می‌شود.</div></div>';
-  const r=lastTestResult;
-  return `<div id="testResult" class="popup-test-result stable">${r.ok?`<div class="result-box compact success">${icon('check')} اتصال موفق بود · ${r.ms||0}ms</div>`:`<div class="result-box compact err">${icon('warning')} اتصال ناموفق بود: ${esc(r.error||'خطا')}</div>`}</div>`;
-}
-function renderUpdateResult(){
-  if(!lastUpdateResult) return '<div id="updateResult" class="update-result muted">برای دریافت آخرین نسخه، بررسی آپدیت را بزنید.</div>';
-  const r=lastUpdateResult;
-  if(!r.ok) return `<div id="updateResult" class="update-result err">${icon('warning')} خطا در بررسی آپدیت: ${esc(r.error||'نامشخص')}</div>`;
-  if(r.updateAvailable) return `<div id="updateResult" class="update-result warn">${icon('download')} نسخه ${esc(r.latestVersion)} آماده است. <a href="${esc(r.htmlUrl)}" target="_blank">مشاهده Release</a></div>`;
-  return `<div id="updateResult" class="update-result ok">${icon('check')} نسخه فعلی به‌روز است. v${esc(r.currentVersion)}</div>`;
-}
-
-async function load(){
-  try{ state = await msg({type:'getState'}); if(!state || !state.ok) throw new Error(state && state.error || 'خطا در بارگذاری'); render(); }
-  catch(e){ $root.innerHTML = `<div class="notice" style="margin:16px">خطا در اجرای افزونه: ${esc(e.message||e)}</div>`; }
-}
-function render(){ $root.innerHTML = VIEW==='popup' ? renderPopup() : renderApp(); bind(); }
-function renderTopbar(){
-  const s=getSettings();
-  return `<div class="topbar fade-in">
-    <div class="brand"><div class="brand-mark">${icon('logo')}</div><div class="brand-text"><h1>Smart PAC Ultra</h1><small>مدیریت ساده، سریع و هوشمند اتصال · v${esc(currentVersion())}</small></div></div>
-    <div class="top-actions">
-      ${VIEW==='popup'?`<button class="icon-btn" data-action="openApp" title="نمایش تمام‌صفحه">${icon('expand')}</button>`:''}
-      <button class="icon-btn" data-action="toggleEnabled" title="${s.enabled?'خاموش کردن':'فعال کردن'}">${icon('power')}</button>
-    </div>
-  </div>`;
-}
-function renderModes(){const s=getSettings();return `<div class="modebar fade-in">${MODES.map(([k,l,ic])=>`<button class="mode-btn ${s.enabled&&s.connectionMode===k?'active':''}" data-mode="${k}">${icon(ic)}<span>${l}</span><span class="tick">${icon('check')}</span></button>`).join('')}</div>`;}
-function renderPopup(){
-  const s=getSettings(), p=getProfile(), l=effective(), sug=currentSuggestion();
-  return `${renderTopbar()}${renderModes()}<section class="popup-stage fade-in">${renderPopupPane(activePopupTab,s,p,l,sug)}</section>${renderPopupNav()}`;
-}
-function renderPopupNav(){
-  const tabs=[['profile','user','پروفایل'],['settings','settings','تنظیمات'],['report','chart','گزارش'],['quick','pin','سریع']];
-  return `<nav class="bottom-nav">${tabs.map(([key,ic,label])=>`<button class="nav-btn ${activePopupTab===key?'active':''}" data-popup-tab="${key}" title="${label}">${icon(ic)} ${label}</button>`).join('')}</nav>`;
-}
-function renderPopupPane(tab,s,p,l,sug){
-  if(tab==='settings') return renderPopupSettings(s,p,l);
-  if(tab==='report') return renderPopupReport(s,p,l,sug);
-  if(tab==='quick') return renderPopupQuick(s,p,l,sug);
-  return renderPopupProfile(s,p,l,sug);
-}
-function renderPopupProfile(s,p,l,sug){
-  return `<div class="hero-status ${s.enabled?'':'off'}"><div class="hero-ico">${icon(s.enabled?'shield':'power')}</div><div><b>${s.enabled?`اتصال ${modeLabel(s.connectionMode)} فعال است`:'افزونه خاموش است'} ${s.enabled?'<span class="dot"></span>':''}</b><small>${s.enabled?'اتصال شما پایدار و قابل کنترل است.':'برای فعال‌سازی، حالت اتصال را انتخاب کنید.'}</small></div></div>
-    <div class="stat-row">
-      <div class="mini-stat">${icon('user')}<b>پروفایل</b><small>${esc(p.name||'پیش‌فرض')}</small></div>
-      <div class="mini-stat good">${icon('shield')}<b>وضعیت</b><small>${s.enabled?'فعال':'خاموش'}</small></div>
-      <div class="mini-stat">${icon('layers')}<b>پروکسی</b><small>${(l.proxyDomains||[]).length} دامنه</small></div>
-      <div class="mini-stat">${icon('list')}<b>مستقیم</b><small>${(l.directDomains||[]).length} دامنه</small></div>
-    </div>
-    ${sug?renderPopupSuggestion(sug):renderEmptySuggestion()}
-    <div class="quick-card"><div><b>${esc(p.name||'پیش‌فرض')}</b><small>${esc(p.proxyType||'SOCKS5')} · ${p.listMode==='profile'?'لیست اختصاصی':'لیست مشترک'}</small></div><button class="soft-btn btn-sm" data-action="openApp">مدیریت پروفایل‌ها</button></div>
-    <div class="compact-actions"><button class="soft-btn btn-block" data-action="addTabProxy">${icon('plus')} سایت فعلی با پروکسی</button><button class="soft-btn btn-block" data-action="addTabDirect">${icon('send')} سایت فعلی مستقیم</button></div>`;
-}
-function renderPopupSettings(s,p,l){
-  const pt=String(p.proxyType||'SOCKS5').toUpperCase();
-  return `<div class="popup-tab-head"><div>${icon('settings')}<b>تنظیمات سریع پروکسی</b></div><span class="badge blue">${esc(pt)}</span></div>
-    <div class="popup-card compact-form settings-card-pro">
-      <label>نوع پروکسی</label>
-      <div class="chips popup-chips">${PROXY_TYPES.map(t=>`<button class="chip ${pt===t?'active':''}" data-proxy-type="${t}">${t==='MTPROTO'?'MTProto':t}</button>`).join('')}</div>
-      <div class="form-grid popup-two"><div class="form-row compact"><label>آدرس سرور</label><input id="proxyHost" class="ltr" value="${esc(p.host||'')}" placeholder="127.0.0.1"></div><div class="form-row compact"><label>پورت</label><input id="proxyPort" class="ltr" type="number" min="1" max="65535" value="${esc(p.port||10808)}"></div></div>
-      <div class="form-row compact"><label>نام پروفایل</label><input id="profileName" value="${esc(p.name||'')}" placeholder="پیش‌فرض"></div>
-      <input id="proxyUser" type="hidden" value="${esc(p.username||'')}"><input id="proxyPass" type="hidden" value="${esc(p.password||'')}">
-      <div class="popup-listmode"><label class="option-card ${p.listMode!=='profile'?'active':''}"><input type="radio" name="listMode" value="global" ${p.listMode!=='profile'?'checked':''}><span><b>لیست مشترک</b><small>ساده‌تر برای همه پروفایل‌ها</small></span></label><label class="option-card ${p.listMode==='profile'?'active':''}"><input type="radio" name="listMode" value="profile" ${p.listMode==='profile'?'checked':''}><span><b>لیست اختصاصی</b><small>قوانین جدا برای این پروفایل</small></span></label></div>
-      ${renderTestResult()}
-      <div class="compact-actions action-pin"><button class="soft-btn btn-block" data-action="testProxy">${icon('diag')} تست اتصال</button><button class="primary-btn btn-block" data-action="saveProfile">${icon('check')} ذخیره و اعمال</button></div>
-    </div>`;
-}
-function renderPopupReport(s,p,l,sug){
-  const logs=(s.logs||[]).slice(0,3);
-  return `<div class="popup-tab-head"><div>${icon('chart')}<b>گزارش و وضعیت</b></div><button class="soft-btn btn-sm" data-action="clearLogs">پاکسازی</button></div>
-    <div class="stat-row report-stats"><div class="mini-stat good">${icon('shield')}<b>حالت</b><small>${s.enabled?modeLabel(s.connectionMode):'خاموش'}</small></div><div class="mini-stat">${icon('layers')}<b>پروکسی</b><small>${(l.proxyDomains||[]).length}</small></div><div class="mini-stat">${icon('list')}<b>مستقیم</b><small>${(l.directDomains||[]).length}</small></div><div class="mini-stat">${icon('warning')}<b>پیشنهاد</b><small>${(s.suggestions||[]).length}</small></div></div>
-    <div class="popup-card log-list">${logs.length?logs.map(log=>`<div class="log-item"><span class="badge ${log.type==='error'?'amber':'blue'}">${esc(log.type||'log')}</span><div><b>${esc(log.message||'رویداد')}</b><small>${log.extra&&log.extra.host?esc(log.extra.host):new Date(log.ts||Date.now()).toLocaleTimeString('fa-IR')}</small></div></div>`).join(''):`<div class="notice small-notice">${icon('info')} هنوز گزارشی ثبت نشده است.</div>`}</div>
-    ${sug?renderPopupSuggestion(sug):`<div class="notice small-notice">${icon('bot')} پیشنهاد هوشمند آماده است.</div>`}`;
-}
-function renderPopupQuick(s,p,l,sug){
-  return `<div class="popup-tab-head"><div>${icon('pin')}<b>اقدام‌های سریع</b></div><span class="badge blue">v${esc(currentVersion())}</span></div>
-    ${sug?renderPopupSuggestion(sug):renderEmptySuggestion()}
-    <div class="popup-card quick-grid">
-      <button class="soft-btn btn-block" data-action="addTabProxy">${icon('plus')} سایت فعلی با پروکسی</button>
-      <button class="soft-btn btn-block" data-action="addTabDirect">${icon('send')} سایت فعلی مستقیم</button>
-      <button class="soft-btn btn-block" data-action="checkUpdate">${icon('download')} بررسی آپدیت</button>
-      <button class="soft-btn btn-block" data-action="copyPac">${icon('file')} کپی PAC</button>
-      <button class="soft-btn btn-block" data-action="exportSettings">${icon('export')} خروجی تنظیمات</button>
-      <button class="soft-btn btn-block" data-action="importSettings">${icon('import')} ورود تنظیمات</button>
-      <button class="danger-btn btn-block" data-action="resetAll">${icon('reset')} بازنشانی</button>
-      <button class="soft-btn btn-block" data-action="openApp">${icon('expand')} پنل کامل</button>
-    </div>
-    ${renderUpdateResult()}`;
-}
-function renderPopupSuggestion(sug){return `<div class="suggestion-card"><div class="suggestion-title"><span>${icon('warning')} پیشنهاد هوشمند</span><span class="badge amber">تست سریع</span></div><div class="suggestion-text">این سایت باز نشده است. می‌توانید فقط با یک کلیک آن را با پروکسی تست کنید.</div><div class="domain-pill">${icon('globe')}<b dir="ltr">${esc(sug.host)}</b></div><div class="suggestion-actions"><button class="soft-btn btn-sm" data-action="ignoreSuggestion" data-host="${esc(sug.host)}">نه، فعلاً</button><button class="primary-btn btn-sm" data-action="acceptSuggestion" data-host="${esc(sug.host)}">با پروکسی تست شود</button></div></div>`;}
-function renderEmptySuggestion(){return `<div class="empty-suggestion">${icon('bot')}<div><b>پیشنهاد هوشمند آماده است</b><br><small>اگر سایتی باز نشود، اینجا راه‌حل ساده نمایش داده می‌شود.</small></div></div>`;}
-function renderApp(){
-  const s=getSettings(), p=getProfile(), l=effective();
-  return `${renderTopbar()}${renderModes()}${renderAppStats(s,p,l)}<div class="dashboard-grid fade-in">${renderProfilesPanel(s,p)}${renderProxyPanel(p)}${renderListsPanel(s,p)}</div>${renderTools()}${renderStateStrip()}`;
-}
-function renderAppStats(s,p,l){return `<div class="app-stats fade-in">
-  <div class="stat-card"><div class="sico">${icon('user')}</div><div><b>پروفایل فعال</b><small>${esc(p.name||'پیش‌فرض')}</small></div></div>
-  <div class="stat-card ${s.enabled?'good':''}"><div class="sico">${icon(s.enabled?'shield':'power')}</div><div><b>وضعیت اتصال</b><small>${s.enabled?modeLabel(s.connectionMode):'خاموش'}</small></div></div>
-  <div class="stat-card"><div class="sico">${icon('layers')}</div><div><b>قواعد پروکسی</b><small>${(l.proxyDomains||[]).length} دامنه</small></div></div>
-  <div class="stat-card"><div class="sico">${icon('list')}</div><div><b>قواعد مستقیم</b><small>${(l.directDomains||[]).length} دامنه</small></div></div>
-</div>`;}
-function renderProfilesPanel(s,p){return `<section class="panel profiles-panel"><div class="panel-head"><div class="panel-title">${icon('user')} پروفایل‌ها</div><button class="soft-btn btn-sm" data-action="addProfile">${icon('plus')} افزودن</button></div><div class="panel-body"><div class="profile-list">${(s.profiles||[]).map(item=>`<div class="profile-item ${item.id===p.id?'active':''}"><div><div class="profile-name">${esc(item.name)}</div><div class="profile-meta">${esc(item.proxyType||'SOCKS5')} · ${item.listMode==='profile'?'لیست اختصاصی':'لیست مشترک'}</div></div>${item.id===p.id?'<span class="badge">فعال</span>':`<button class="soft-btn btn-sm" data-select-profile="${esc(item.id)}">انتخاب</button>`}</div>`).join('')}</div><div class="actions-row" style="margin-top:10px"><button class="soft-btn btn-sm" data-action="copyProfile">${icon('copy')} کپی</button><button class="danger-btn btn-sm" data-action="deleteProfile">${icon('trash')} حذف</button></div></div></section>`;}
-function renderProxyPanel(p){const pt=String(p.proxyType||'SOCKS5').toUpperCase();return `<section class="panel proxy-panel"><div class="panel-head"><div class="panel-title">${icon('globe')} تنظیمات پروکسی</div><span class="badge blue">${esc(pt)}</span></div><div class="panel-body"><div class="form-row"><label>نوع پروکسی</label><div class="chips">${PROXY_TYPES.map(t=>`<button class="chip ${pt===t?'active':''}" data-proxy-type="${t}">${t==='MTPROTO'?'MTProto Bridge':t}</button>`).join('')}</div></div><div class="form-row"><label>نام پروفایل</label><input id="profileName" value="${esc(p.name||'')}" placeholder="مثلاً سرور آلمان"></div><div class="form-grid"><div class="form-row"><label>آدرس سرور</label><input id="proxyHost" class="ltr" value="${esc(p.host||'')}" placeholder="127.0.0.1"></div><div class="form-row"><label>پورت</label><input id="proxyPort" class="ltr" type="number" min="1" max="65535" value="${esc(p.port||10808)}"></div></div><div class="form-grid two"><div class="form-row"><label>نام کاربری اختیاری</label><input id="proxyUser" class="ltr" value="${esc(p.username||'')}"></div><div class="form-row"><label>رمز عبور اختیاری</label><input id="proxyPass" class="ltr" type="password" value="${esc(p.password||'')}"></div></div><div class="form-row"><label>حالت لیست‌ها برای این پروفایل</label><div class="option-stack"><label class="option-card ${p.listMode!=='profile'?'active':''}"><input type="radio" name="listMode" value="global" ${p.listMode!=='profile'?'checked':''}><span><b>لیست مشترک عمومی</b><small>برای کاربران مبتدی؛ همه پروفایل‌ها از یک لیست استفاده می‌کنند.</small></span></label><label class="option-card ${p.listMode==='profile'?'active':''}"><input type="radio" name="listMode" value="profile" ${p.listMode==='profile'?'checked':''}><span><b>لیست اختصاصی هر پروفایل</b><small>برای کاربران حرفه‌ای؛ قوانین هر پروفایل جدا می‌شود.</small></span></label></div></div><div class="actions-row"><button class="primary-btn" data-action="saveProfile">${icon('check')} ذخیره و اعمال</button><button class="soft-btn" data-action="testProxy">${icon('diag')} تست اتصال</button></div><div id="testResult"></div></div></section>`;}
-function renderListsPanel(s,p){const sug=currentSuggestion(); const proxyList=p.listMode==='profile'?(p.lists&&p.lists.proxyDomains||[]):(s.globalLists&&s.globalLists.proxyDomains||[]); const directList=p.listMode==='profile'?(p.lists&&p.lists.directDomains||[]):(s.globalLists&&s.globalLists.directDomains||[]);return `<section class="panel lists-panel"><div class="panel-head"><div class="panel-title">${icon('list')} لیست‌ها و پیشنهادها</div></div><div class="panel-body">${sug?`<div class="suggestion-panel"><div class="head"><span>${icon('warning')} پیشنهاد هوشمند</span><button class="icon-btn btn-sm" data-action="clearSuggestions">${icon('close')}</button></div><div>سایت زیر باز نشده است. می‌خواهید به لیست پروکسی اضافه شود؟</div><div class="domain-pill"><b dir="ltr">${esc(sug.host)}</b></div><div class="actions-row"><button class="primary-btn btn-sm" data-action="acceptSuggestion" data-host="${esc(sug.host)}">افزودن به پروکسی</button><button class="soft-btn btn-sm" data-action="ignoreSuggestion" data-host="${esc(sug.host)}">فعلاً نه</button></div></div>`:`<div class="notice">${icon('info')} اگر سایتی در حالت هوشمند باز نشود، پیشنهاد تست با پروکسی اینجا نمایش داده می‌شود.</div>`}<div class="hr"></div><div class="form-row"><label>لیست پروکسی ${p.listMode==='profile'?'این پروفایل':'مشترک'}</label><textarea id="proxyDomains" class="mono ltr" placeholder="example.com&#10;.example.org">${esc(listToText(proxyList))}</textarea></div><div class="form-row"><label>لیست مستقیم ${p.listMode==='profile'?'این پروفایل':'مشترک'}</label><textarea id="directDomains" class="mono ltr" placeholder="localhost&#10;127.0.0.1&#10;.ir">${esc(listToText(directList))}</textarea></div><div class="actions-row"><button class="primary-btn" data-action="saveLists">${icon('check')} ذخیره لیست‌ها</button><button class="soft-btn" data-action="addTabProxy">${icon('plus')} سایت فعلی با پروکسی</button><button class="soft-btn" data-action="addTabDirect">${icon('send')} سایت فعلی مستقیم</button></div></div></section>`;}
-function renderTools(){return `<div class="tools-grid fade-in"><button class="tool-tile" data-action="exportSettings">${icon('export')}<span>برون‌بری تنظیمات<small>ذخیره فایل JSON</small></span></button><button class="tool-tile" data-action="importSettings">${icon('import')}<span>درون‌ریزی تنظیمات<small>از فایل JSON</small></span></button><button class="tool-tile" data-action="copyPac">${icon('file')}<span>کپی PAC<small>برای بررسی دستی</small></span></button><button class="tool-tile" data-action="resetAll">${icon('reset')}<span>بازنشانی<small>حالت پیش‌فرض</small></span></button><button class="tool-tile" data-action="checkUpdate">${icon('download')}<span>بررسی آپدیت<small>GitHub Releases</small></span></button></div>`;}
-function renderStateStrip(){return `<div class="state-strip fade-in">${[['direct','send','مستقیم'],['proxy','globe','پروکسی'],['pac','file','PAC'],['system','monitor','سیستم'],['smart','bot','هوشمند'],['error','warning','خطا'],['off','power','خاموش']].map(([c,ic,l])=>`<div class="state-icon ${c}"><div class="circle">${icon(ic)}</div><small>${l}</small></div>`).join('')}</div>`;}
-
-function currentProfilePatch(){const p=getProfile();return {...p,name:document.getElementById('profileName')?.value||p.name,host:document.getElementById('proxyHost')?.value||p.host,port:parseInt(document.getElementById('proxyPort')?.value||p.port||10808,10),username:document.getElementById('proxyUser')?.value||'',password:document.getElementById('proxyPass')?.value||'',listMode:document.querySelector('input[name="listMode"]:checked')?.value||p.listMode||'global'};}
-async function saveProfile(){const profile=currentProfilePatch(); await msg({type:'updateProfile',profile}); await load();}
-async function saveLists(){const s=getSettings(); const p={...currentProfilePatch()}; const proxy=textToList(document.getElementById('proxyDomains')?.value); const direct=textToList(document.getElementById('directDomains')?.value); if(p.listMode==='profile'){p.lists={...(p.lists||{}),proxyDomains:proxy,directDomains:direct}; await msg({type:'updateProfile',profile:p});}else{const settings=structuredClone(s); settings.globalLists=settings.globalLists||{}; settings.globalLists.proxyDomains=proxy; settings.globalLists.directDomains=direct; await msg({type:'setSettings',settings});} await load();}
-function bind(){
-  document.querySelectorAll('[data-popup-tab]').forEach(b=>b.addEventListener('click',()=>{activePopupTab=b.dataset.popupTab||'profile'; render();}));
-  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',async()=>{await msg({type:'setMode',mode:b.dataset.mode});await load();}));
-  document.querySelectorAll('[data-proxy-type]').forEach(b=>b.addEventListener('click',async()=>{const p=currentProfilePatch(); p.proxyType=b.dataset.proxyType; await msg({type:'updateProfile',profile:p}); await load();}));
-  document.querySelectorAll('[data-select-profile]').forEach(b=>b.addEventListener('click',async()=>{await msg({type:'setActiveProfile',id:b.dataset.selectProfile});await load();}));
-  document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',async()=>{
-    const a=b.dataset.action; const s=getSettings(); const p=getProfile(); const host=b.dataset.host || (state.currentTab&&state.currentTab.host) || '';
-    try{
-      if(a==='openApp') await chrome.tabs.create({url:chrome.runtime.getURL('app.html')});
-      if(a==='toggleEnabled'){await msg({type:'toggleEnabled',enabled:!s.enabled});await load();}
-      if(a==='saveProfile') await saveProfile();
-      if(a==='saveLists') await saveLists();
-      if(a==='addProfile'){await msg({type:'addProfile',name:'پروفایل جدید'});await load();}
-      if(a==='copyProfile'){await msg({type:'copyProfile'});await load();}
-      if(a==='deleteProfile'){if(confirm('این پروفایل حذف شود؟')){await msg({type:'deleteProfile',id:p.id});await load();}}
-      if(a==='addTabProxy' && host){await msg({type:'addCurrentSiteToProxy',host});await load();}
-      if(a==='addTabDirect' && host){await msg({type:'addCurrentSiteToDirect',host});await load();}
-      if(a==='acceptSuggestion' && host){await msg({type:'addCurrentSiteToProxy',host});await load();}
-      if(a==='ignoreSuggestion' && host){await msg({type:'ignoreSuggestion',host});await load();}
-      if(a==='clearSuggestions'){await msg({type:'clearSuggestions'});await load();}
-      if(a==='clearLogs'){await msg({type:'clearLogs'});await load();}
-      if(a==='testProxy') await testProxyUI();
-      if(a==='checkUpdate') await checkUpdateUI();
-      if(a==='copyPac') await copyPac();
-      if(a==='exportSettings') exportSettings();
-      if(a==='importSettings') importSettings();
-      if(a==='resetAll'){if(confirm('همه تنظیمات به حالت پیش‌فرض برگردد؟')){await msg({type:'resetAll'});await load();}}
-    }catch(e){alert('خطا: '+(e.message||e));}
-  }));
-}
-async function testProxyUI(){
-  const box=document.getElementById('testResult');
-  if(box) box.innerHTML='<div class="result-box compact">در حال تست اتصال...</div>';
-  try{ await saveProfileNoReload(); }catch(e){}
-  const res=await msg({type:'testProxy'});
-  lastTestResult=res;
-  const html=res.ok?`<div class="result-box compact success">${icon('check')} اتصال موفق بود · ${res.ms}ms</div>`:`<div class="result-box compact err">${icon('warning')} اتصال ناموفق بود: ${esc(res.error||'خطا')}</div>`;
-  const target=document.getElementById('testResult');
-  if(target){ target.innerHTML=html; target.classList.add('visible'); target.scrollIntoView({block:'nearest'}); }
-}
-async function saveProfileNoReload(){const profile=currentProfilePatch(); await msg({type:'updateProfile',profile});}
-async function checkUpdateUI(){
-  const el=document.getElementById('updateResult');
-  if(el) el.innerHTML='در حال بررسی آخرین Release از GitHub...';
-  const res=await msg({type:'checkUpdate'});
-  lastUpdateResult=res;
-  const html=renderUpdateResult();
-  const tmp=document.createElement('div'); tmp.innerHTML=html;
-  const node=tmp.firstElementChild;
-  const target=document.getElementById('updateResult');
-  if(target && node) target.replaceWith(node); else alert(res.ok ? (res.updateAvailable?'نسخه جدید موجود است.':'نسخه فعلی به‌روز است.') : ('خطا: '+(res.error||'')));
-}
-async function copyPac(){const r=await msg({type:'copyPac'}); if(r.ok && navigator.clipboard){await navigator.clipboard.writeText(r.pac); alert('PAC کپی شد.');}}
-function exportSettings(){const blob=new Blob([JSON.stringify(getSettings(),null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='smart-pac-ultra-settings.json'; a.click(); URL.revokeObjectURL(a.href);}
-function importSettings(){const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';inp.onchange=async()=>{const file=inp.files[0]; if(!file)return; const txt=await file.text(); const settings=JSON.parse(txt); await msg({type:'setSettings',settings}); await load();};inp.click();}
-
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+function msg(payload){return chrome.runtime.sendMessage(payload)}
+function s(){return state.settings||{}};function p(){return state.activeProfile||{}};function l(){return state.effectiveLists||{}};
+function textToList(t){return String(t||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean)}
+function listToText(a){return (a||[]).join('\n')}
+function modeInfo(mode){return MODES.find(x=>x[0]===mode)||MODES[4]}
+function version(){return state.extensionVersion||chrome.runtime.getManifest().version}
+function currentHost(){return state.currentTab&&state.currentTab.host?state.currentTab.host:''}
+function suggestion(){return s().suggestions&&s().suggestions[0]?s().suggestions[0]:null}
+async function load(){try{state=await msg({type:'getState'});if(!state||!state.ok)throw new Error(state&&state.error||'Load failed');render()}catch(e){$root.innerHTML=`<div class="spu"><div class="card"><div class="card-body">خطا در اجرای افزونه: ${esc(e.message||e)}</div></div></div>`}}
+function render(){if(VIEW==='popup')$root.innerHTML=renderPopup();else $root.innerHTML=renderApp();bind()}
+function topbar(){const st=s();return `<div class="topbar fade-in"><div class="brand"><div class="brand-mark">${icon('logo')}</div><div class="brand-title"><b>Smart PAC Ultra</b><small>مدیریت سریع و ساده اتصال · v${esc(version())}</small></div></div><div class="top-actions">${VIEW==='popup'?`<button class="icon-btn" data-action="openApp" title="صفحه کامل">${icon('expand')}</button>`:''}<button class="icon-btn" data-action="toggleEnabled" title="${st.enabled?'خاموش کردن':'فعال کردن'}">${icon('power')}</button></div></div>`}
+function modebar(){const st=s();return `<div class="modebar fade-in">${MODES.map(([k,label,ic,title])=>`<button class="mode-btn ${st.enabled&&st.connectionMode===k?'active':''}" data-mode="${k}" title="${title}">${icon(ic)}<span>${label}</span><span class="tick">${icon('check')}</span></button>`).join('')}</div>`}
+function statusGrid(){const st=s(),pr=p(),li=l();return `<div class="status-grid fade-in"><div class="status-card"><span class="sicon">${icon('user')}</span><div><b>پروفایل</b><small>${esc(pr.name||'پیش‌فرض')}</small></div></div><div class="status-card good"><span class="sicon">${icon('shield')}</span><div><b>وضعیت</b><small>${st.enabled?'فعال':'خاموش'}</small></div></div><div class="status-card"><span class="sicon">${icon('layers')}</span><div><b>پروکسی</b><small>${(li.proxyDomains||[]).length} قانون</small></div></div><div class="status-card"><span class="sicon">${icon('list')}</span><div><b>مستقیم</b><small>${(li.directDomains||[]).length} قانون</small></div></div></div>`}
+function renderPopup(){return `<div class="spu">${topbar()}${modebar()}${statusGrid()}<div class="content"><div class="home-scroll">${activeTab==='home'?popupHome():activeTab==='lists'?popupLists():activeTab==='profiles'?popupProfiles():popupTools()}</div></div>${popupNav()}</div>`}
+function popupNav(){const tabs=[['home','pin','اصلی'],['lists','list','لیست‌ها'],['profiles','user','پروفایل'],['tools','settings','ابزار']];return `<nav class="bottom-nav">${tabs.map(([k,ic,t])=>`<button class="nav-btn ${activeTab===k?'active':''}" data-tab="${k}">${icon(ic)}<span>${t}</span></button>`).join('')}</nav>`}
+function hero(){const st=s(),mi=modeInfo(st.connectionMode);return `<div class="hero ${st.enabled?'':'off'}"><div class="hero-ico">${icon(st.enabled?mi[2]:'power')}</div><div><b>${st.enabled?`اتصال ${mi[1]} فعال است`:'افزونه خاموش است'} ${st.enabled?'<span class="dot"></span>':''}</b><small>${st.enabled?mi[3]:'برای شروع یک حالت اتصال انتخاب کنید.'}</small></div></div>`}
+function quickProfileForm(){const pr=p();return `<div class="card"><div class="card-head"><b>${icon('settings')} تنظیم سریع پروکسی</b><span class="badge green">${esc(pr.proxyType||'SOCKS5')}</span></div><div class="card-body"><div class="type-pills">${TYPES.map(t=>`<button class="pill ${(pr.proxyType||'SOCKS5').toUpperCase()===t?'active':''}" data-proxy-type="${t}">${t==='MTPROTO'?'MTProto':t}</button>`).join('')}</div><div class="field-grid" style="margin-top:8px"><div class="field"><label>آدرس سرور</label><input id="proxyHost" class="ltr" value="${esc(pr.host||'127.0.0.1')}"></div><div class="field"><label>پورت</label><input id="proxyPort" class="ltr" type="number" value="${esc(pr.port||10808)}"></div></div><div class="test-result" id="testResult">${testResultHtml()}</div><div class="site-actions"><button class="primary-btn" data-action="saveProfile">${icon('check')} ذخیره</button><button class="soft-btn" data-action="testProxy">${icon('diag')} تست اتصال</button></div></div></div>`}
+function testResultHtml(){if(!lastTestResult)return `<div class="result-box info">${icon('info')} نتیجه تست اینجا نمایش داده می‌شود.</div>`;return lastTestResult.ok?`<div class="result-box success">${icon('check')} اتصال موفق بود · ${lastTestResult.ms||0}ms</div>`:`<div class="result-box err">${icon('warning')} اتصال ناموفق: ${esc(lastTestResult.error||'خطا')}</div>`}
+function popupHome(){const sug=suggestion();return `${hero()}${sug?suggestionBox(sug):''}<div class="card"><div class="card-head"><b>${icon('pin')} سایت فعلی</b><span class="badge">${esc(currentHost()||'بدون سایت')}</span></div><div class="card-body"><div class="site-actions"><button class="primary-btn" data-action="addTabProxy">${icon('plus')} با پروکسی</button><button class="soft-btn" data-action="addTabDirect">${icon('send')} مستقیم</button></div></div></div>${listPreview()}${quickProfileForm()}`}
+function listPreview(){const li=l();return `<div class="card"><div class="card-head"><b>${icon('list')} لیست‌های اصلی</b><button class="chip-btn" data-go-tab="lists">ویرایش کامل</button></div><div class="card-body"><div class="list-mini"><div class="field mini-list"><div class="list-toolbar"><label>مستقیم</label><span class="badge">${(li.directDomains||[]).length}</span></div><textarea id="directMini" class="mono ltr">${esc(listToText((li.directDomains||[]).slice(0,8)))}</textarea></div><div class="field mini-list"><div class="list-toolbar"><label>پروکسی</label><span class="badge">${(li.proxyDomains||[]).length}</span></div><textarea id="proxyMini" class="mono ltr">${esc(listToText((li.proxyDomains||[]).slice(0,8)))}</textarea></div></div><div class="site-actions" style="margin-top:8px"><button class="primary-btn" data-action="saveMiniLists">${icon('check')} ذخیره سریع</button><button class="soft-btn" data-go-tab="lists">لیست کامل</button></div></div></div>`}
+function suggestionBox(x){return `<div class="suggestion"><b>${icon('warning')} پیشنهاد هوشمند</b><div>این سایت باز نشده است. می‌خواهید با پروکسی تست شود؟</div><div class="domain">${esc(x.host)}</div><div class="site-actions"><button class="primary-btn" data-action="acceptSuggestion" data-host="${esc(x.host)}">افزودن به پروکسی</button><button class="soft-btn" data-action="ignoreSuggestion" data-host="${esc(x.host)}">فعلاً نه</button></div></div>`}
+function popupLists(){const li=l();return `<div class="card"><div class="card-head"><b>${icon('list')} لیست مستقیم و پروکسی</b><span class="badge">${p().listMode==='profile'?'اختصاصی':'مشترک'}</span></div><div class="card-body"><div class="field"><label>لیست مستقیم</label><textarea id="directDomains" class="mono ltr">${esc(listToText(li.directDomains||[]))}</textarea></div><div class="field" style="margin-top:8px"><label>لیست پروکسی</label><textarea id="proxyDomains" class="mono ltr">${esc(listToText(li.proxyDomains||[]))}</textarea></div><div class="site-actions" style="margin-top:8px"><button class="primary-btn" data-action="saveLists">${icon('check')} ذخیره لیست‌ها</button><button class="soft-btn" data-action="addTabDirect">${icon('send')} سایت فعلی مستقیم</button></div><button class="soft-btn btn-block" style="margin-top:8px" data-action="addTabProxy">${icon('plus')} سایت فعلی با پروکسی</button></div></div>`}
+function popupProfiles(){const st=s(),pr=p();return `<div class="card"><div class="card-head"><b>${icon('user')} پروفایل‌ها</b><button class="chip-btn" data-action="addProfile">${icon('plus')} افزودن</button></div><div class="card-body"><div class="profile-list">${(st.profiles||[]).map(x=>`<div class="profile-item ${x.id===st.activeProfileId?'active':''}"><div><b>${esc(x.name)}</b><small>${esc(x.proxyType||'SOCKS5')} · ${x.listMode==='profile'?'لیست اختصاصی':'لیست مشترک'}</small></div><button class="soft-btn btn-sm" data-select-profile="${esc(x.id)}">انتخاب</button></div>`).join('')}</div><div class="field" style="margin-top:10px"><label>نام پروفایل فعال</label><input id="profileName" value="${esc(pr.name||'پیش‌فرض')}"></div><div class="site-actions" style="margin-top:8px"><button class="primary-btn" data-action="saveProfile">${icon('check')} ذخیره</button><button class="soft-btn" data-action="copyProfile">${icon('copy')} کپی</button></div><button class="danger-btn btn-block" style="margin-top:8px" data-action="deleteProfile">${icon('trash')} حذف پروفایل</button></div></div>`}
+function popupTools(){return `${updateCard()}<div class="card"><div class="card-head"><b>${icon('settings')} ابزارها</b></div><div class="card-body"><div class="site-actions"><button class="soft-btn" data-action="exportSettings">${icon('export')} خروجی</button><button class="soft-btn" data-action="importSettings">${icon('import')} ورودی</button></div><div class="site-actions" style="margin-top:8px"><button class="soft-btn" data-action="copyPac">${icon('file')} کپی PAC</button><button class="soft-btn" data-action="backupSettings">${icon('download')} پشتیبان</button></div><button class="danger-btn btn-block" style="margin-top:8px" data-action="resetAll">${icon('reset')} بازنشانی کامل</button></div></div><div class="card"><div class="card-head"><b>${icon('chart')} گزارش کوتاه</b><button class="chip-btn" data-action="clearLogs">پاکسازی</button></div><div class="card-body"><div class="log-list">${((s().logs||[]).slice(0,5).map(x=>`<div class="log-item">${esc(x.message||x.type)}</div>`).join(''))||'<div class="empty">هنوز گزارشی ثبت نشده است.</div>'}</div></div></div>`}
+function updateCard(){let cls='';let body='برای دریافت آخرین نسخه، بررسی آپدیت را بزنید.';if(lastUpdateResult){if(!lastUpdateResult.ok){cls='err';body=`خطا: ${esc(lastUpdateResult.error||'نامشخص')}`}else if(lastUpdateResult.updateAvailable){cls='warn';body=`نسخه ${esc(lastUpdateResult.latestVersion)} آماده است.`}else{cls='ok';body=`نسخه فعلی به‌روز است. v${esc(lastUpdateResult.currentVersion)}`}}return `<div class="update-box ${cls}" id="updateResult"><b>${icon('download')} آپدیت GitHub</b><div>${body}</div><div class="site-actions"><button class="primary-btn" data-action="checkUpdate">بررسی</button><button class="soft-btn" data-action="downloadUpdate">دانلود آپدیت</button></div><small>تنظیمات، پروفایل‌ها و لیست‌ها در storage افزونه حفظ می‌شوند؛ قبل از دانلود هم پشتیبان JSON ساخته می‌شود.</small></div>`}
+function renderApp(){return `<div class="spu">${topbar()}${modebar()}${statusGrid()}<div class="content"><div class="app-grid"><div>${popupProfiles()}${updateCard()}</div><div>${quickProfileForm()}${popupLists()}</div><div>${hero()}${suggestion()?suggestionBox(suggestion()):'<div class="empty">پیشنهاد هوشمندی وجود ندارد.</div>'}${popupTools()}</div></div></div><div class="card"><div class="card-head"><b>${icon('settings')} عملیات سریع</b></div><div class="card-body"><div class="tools-grid"><button class="tool" data-action="exportSettings">${icon('export')}<span>خروجی<small>JSON</small></span></button><button class="tool" data-action="importSettings">${icon('import')}<span>ورودی<small>JSON</small></span></button><button class="tool" data-action="checkUpdate">${icon('download')}<span>آپدیت<small>GitHub</small></span></button><button class="tool" data-action="copyPac">${icon('file')}<span>PAC<small>کپی</small></span></button><button class="tool" data-action="backupSettings">${icon('download')}<span>پشتیبان<small>تنظیمات</small></span></button></div></div></div>${stateStrip()}</div>`}
+function stateStrip(){return `<div class="state-strip">${[['direct','send','مستقیم'],['proxy','globe','پروکسی'],['pac','file','PAC'],['system','monitor','سیستم'],['smart','bot','هوشمند'],['error','warning','خطا'],['off','power','خاموش']].map(([c,ic,t])=>`<div class="state-icon ${c}"><div class="circle">${icon(ic)}</div><span>${t}</span></div>`).join('')}</div>`}
+function currentProfilePatch(){const pr=p();return {...pr,name:document.getElementById('profileName')?.value||pr.name,host:document.getElementById('proxyHost')?.value||pr.host,port:parseInt(document.getElementById('proxyPort')?.value||pr.port||10808,10)||10808}}
+async function saveProfile(reload=true){await msg({type:'updateProfile',profile:currentProfilePatch()});if(reload)await load()}
+async function saveLists(){const st=s(),pr=currentProfilePatch();const proxy=textToList(document.getElementById('proxyDomains')?.value);const direct=textToList(document.getElementById('directDomains')?.value);if(pr.listMode==='profile'){pr.lists={...(pr.lists||{}),proxyDomains:proxy,directDomains:direct};await msg({type:'updateProfile',profile:pr})}else{const ns=JSON.parse(JSON.stringify(st));ns.globalLists=ns.globalLists||{};ns.globalLists.proxyDomains=proxy;ns.globalLists.directDomains=direct;await msg({type:'setSettings',settings:ns})}await load()}
+async function saveMiniLists(){const st=s(),pr=currentProfilePatch();const current=l();let direct=textToList(document.getElementById('directMini')?.value);let proxy=textToList(document.getElementById('proxyMini')?.value);direct=[...direct,...(current.directDomains||[]).slice(direct.length)];proxy=[...proxy,...(current.proxyDomains||[]).slice(proxy.length)];if(pr.listMode==='profile'){pr.lists={...(pr.lists||{}),proxyDomains:proxy,directDomains:direct};await msg({type:'updateProfile',profile:pr})}else{const ns=JSON.parse(JSON.stringify(st));ns.globalLists=ns.globalLists||{};ns.globalLists.proxyDomains=proxy;ns.globalLists.directDomains=direct;await msg({type:'setSettings',settings:ns})}await load()}
+function bind(){document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{activeTab=b.dataset.tab;render()}));document.querySelectorAll('[data-go-tab]').forEach(b=>b.addEventListener('click',()=>{activeTab=b.dataset.goTab;render()}));document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',async()=>{await msg({type:'setMode',mode:b.dataset.mode});await load()}));document.querySelectorAll('[data-proxy-type]').forEach(b=>b.addEventListener('click',async()=>{const pr=currentProfilePatch();pr.proxyType=b.dataset.proxyType;await msg({type:'updateProfile',profile:pr});await load()}));document.querySelectorAll('[data-select-profile]').forEach(b=>b.addEventListener('click',async()=>{await msg({type:'setActiveProfile',id:b.dataset.selectProfile});await load()}));document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',async()=>{const a=b.dataset.action;const host=b.dataset.host||currentHost();try{if(a==='openApp')await chrome.tabs.create({url:chrome.runtime.getURL('app.html')});if(a==='toggleEnabled')await msg({type:'toggleEnabled',enabled:!s().enabled}).then(load);if(a==='saveProfile')await saveProfile();if(a==='saveLists')await saveLists();if(a==='saveMiniLists')await saveMiniLists();if(a==='addProfile')await msg({type:'addProfile',name:'پروفایل جدید'}).then(load);if(a==='copyProfile')await msg({type:'copyProfile'}).then(load);if(a==='deleteProfile'&&confirm('پروفایل حذف شود؟'))await msg({type:'deleteProfile',id:p().id}).then(load);if(a==='addTabProxy'&&host)await msg({type:'addCurrentSiteToProxy',host}).then(load);if(a==='addTabDirect'&&host)await msg({type:'addCurrentSiteToDirect',host}).then(load);if(a==='acceptSuggestion'&&host)await msg({type:'addCurrentSiteToProxy',host}).then(load);if(a==='ignoreSuggestion'&&host)await msg({type:'ignoreSuggestion',host}).then(load);if(a==='testProxy')await testProxy();if(a==='checkUpdate')await checkUpdate();if(a==='downloadUpdate')await downloadUpdate();if(a==='copyPac')await copyPac();if(a==='exportSettings')exportSettings();if(a==='importSettings')importSettings();if(a==='backupSettings')await msg({type:'backupSettings'}).then(()=>alert('پشتیبان تنظیمات در Downloads ذخیره شد.'));if(a==='clearLogs')await msg({type:'clearLogs'}).then(load);if(a==='resetAll'&&confirm('همه تنظیمات بازنشانی شود؟'))await msg({type:'resetAll'}).then(load)}catch(e){alert('خطا: '+(e.message||e))}}))}
+async function testProxy(){const el=document.getElementById('testResult');if(el)el.innerHTML=`<div class="result-box info">در حال تست اتصال...</div>`;await saveProfile(false).catch(()=>{});const r=await msg({type:'testProxy'});lastTestResult=r;const html=testResultHtml();const target=document.getElementById('testResult');if(target)target.innerHTML=html}
+async function checkUpdate(){const box=document.getElementById('updateResult');if(box)box.querySelector('div').textContent='در حال بررسی GitHub Releases...';const r=await msg({type:'checkUpdate'});lastUpdateResult=r;render()}
+async function downloadUpdate(){const box=document.getElementById('updateResult');if(box)box.querySelector('div').textContent='در حال آماده‌سازی دانلود و پشتیبان...';const r=await msg({type:'downloadUpdate'});lastUpdateResult=r;if(r.ok&&r.downloaded)alert('فایل آپدیت و پشتیبان تنظیمات دانلود شد. نصب جایگزین باید از صفحه Extensions انجام شود.');render()}
+async function copyPac(){const r=await msg({type:'copyPac'});if(r.ok&&navigator.clipboard){await navigator.clipboard.writeText(r.pac);alert('PAC کپی شد.')}}
+function exportSettings(){const blob=new Blob([JSON.stringify(s(),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='smart-pac-ultra-settings.json';a.click();URL.revokeObjectURL(a.href)}
+function importSettings(){const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';inp.onchange=async()=>{const f=inp.files[0];if(!f)return;const data=JSON.parse(await f.text());await msg({type:'setSettings',settings:data.settings||data});await load()};inp.click()}
 load();
