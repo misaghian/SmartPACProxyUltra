@@ -29,13 +29,13 @@ python3 scripts/package_release.py
 یا با GitHub Actions:
 
 ```bash
-git tag v3.5.0
-git push origin v3.5.0
+git tag v3.6.0
+git push origin v3.6.0
 ```
 
 Workflow فایل‌های زیر را داخل Release قرار می‌دهد:
 
-- `smart-pac-ultra-v3.5.0-release.zip`
+- `smart-pac-ultra-v3.6.0-release.zip`
 - `latest.json`
 
 ## فونت VazirFD
