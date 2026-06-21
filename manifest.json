@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Smart PAC Ultra",
-  "version": "3.4.2",
-  "description": "مدیریت هوشمند، ساده و حرفه‌ای پروکسی و PAC با رابط فارسی اصلاح‌شده، فونت VazirFD از ui/fonts، پروفایل‌ها و آپدیت GitHub.",
+  "version": "3.5.0",
+  "description": "مدیریت هوشمند، ساده و حرفه‌ای پروکسی و PAC با رابط فارسی فشرده، پروفایل‌ها، لیست مستقیم/پروکسی و بررسی/دانلود آپدیت از GitHub.",
   "permissions": [
     "proxy",
     "storage",
     "webRequest",
     "webNavigation",
     "tabs",
-    "activeTab"
+    "activeTab",
+    "downloads",
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>"

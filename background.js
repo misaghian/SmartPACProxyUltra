@@ -1,5 +1,6 @@
 
-const STORAGE_KEY = "smartPacUltraSettingsV340";
+const STORAGE_KEY = "smartPacUltraSettingsV340"; // Stable key: do not change, so user profiles/lists survive updates.
+const LEGACY_STORAGE_KEYS = ["smartPacUltraSettings", "smartPacUltraSettingsV300", "smartPacUltraSettingsV320", "smartPacUltraSettingsV340"];
 const GITHUB_REPO = "misaghian/SmartPACProxyUltra";
 const GITHUB_RELEASE_API = "https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest";
 
@@ -80,7 +81,15 @@ const DEFAULT_SETTINGS = {
   ],
   candidates: {},
   suggestions: [],
-  logs: []
+  logs: [],
+  updates: {
+    autoCheck: true,
+    autoDownload: false,
+    lastCheck: 0,
+    lastLatestVersion: "",
+    lastReleaseUrl: "",
+    lastDownloadedVersion: ""
+  }
 };
 
 let settings = null;
@@ -278,13 +287,20 @@ function addLog(type, message, extra = {}) {
 }
 
 async function loadSettings() {
-  const data = await chrome.storage.local.get(STORAGE_KEY);
-  settings = Object.assign(clone(DEFAULT_SETTINGS), data[STORAGE_KEY] || {});
+  const data = await chrome.storage.local.get(LEGACY_STORAGE_KEYS);
+  let stored = data[STORAGE_KEY];
+  if (!stored) {
+    for (const key of LEGACY_STORAGE_KEYS) {
+      if (data[key]) { stored = data[key]; break; }
+    }
+  }
+  settings = Object.assign(clone(DEFAULT_SETTINGS), stored || {});
   settings.globalLists = Object.assign(clone(DEFAULT_SETTINGS.globalLists), settings.globalLists || {});
   settings.smart = Object.assign(clone(DEFAULT_SETTINGS.smart), settings.smart || {});
   settings.profiles = Array.isArray(settings.profiles) && settings.profiles.length ? settings.profiles : clone(DEFAULT_SETTINGS.profiles);
   settings.suggestions = Array.isArray(settings.suggestions) ? settings.suggestions : [];
   settings.logs = Array.isArray(settings.logs) ? settings.logs : [];
+  settings.updates = Object.assign(clone(DEFAULT_SETTINGS.updates), settings.updates || {});
   normalizeSettings();
   await saveSettings(false);
 }
@@ -402,24 +418,89 @@ function compareVersions(a, b) {
   }
   return 0;
 }
+function pickReleaseAsset(release) {
+  const assets = Array.isArray(release && release.assets) ? release.assets : [];
+  return assets.find(a => /release\.zip$/i.test(a.name || "")) ||
+         assets.find(a => /smart-pac-ultra.*\.zip$/i.test(a.name || "")) ||
+         assets.find(a => /\.zip$/i.test(a.name || "")) || null;
+}
+
+async function fetchLatestRelease() {
+  const res = await fetch(GITHUB_RELEASE_API, {
+    cache: "no-store",
+    headers: { "Accept": "application/vnd.github+json" }
+  });
+  if (!res.ok) throw new Error("GitHub API: " + res.status);
+  return await res.json();
+}
+
 async function checkForUpdate() {
   const currentVersion = chrome.runtime.getManifest().version;
   try {
     const started = Date.now();
-    const res = await fetch(GITHUB_RELEASE_API, { cache: "no-store", headers: { "Accept": "application/vnd.github+json" } });
-    if (!res.ok) throw new Error("GitHub API: " + res.status);
-    const data = await res.json();
+    const data = await fetchLatestRelease();
     const latestVersion = String(data.tag_name || data.name || "").replace(/^v/i, "");
     if (!latestVersion) throw new Error("Latest release version not found");
+    const asset = pickReleaseAsset(data);
     const updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
+    settings.updates = Object.assign(clone(DEFAULT_SETTINGS.updates), settings.updates || {});
+    settings.updates.lastCheck = now();
+    settings.updates.lastLatestVersion = latestVersion;
+    settings.updates.lastReleaseUrl = data.html_url || ("https://github.com/" + GITHUB_REPO + "/releases");
     addLog("update", updateAvailable ? "نسخه جدید در GitHub موجود است" : "بررسی آپدیت انجام شد؛ نسخه فعلی به‌روز است", { currentVersion, latestVersion, ms: Date.now() - started });
     await saveSettings(false);
-    return { ok: true, currentVersion, latestVersion, updateAvailable, htmlUrl: data.html_url || ("https://github.com/" + GITHUB_REPO + "/releases") };
+    return {
+      ok: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable,
+      htmlUrl: settings.updates.lastReleaseUrl,
+      assetName: asset ? asset.name : "",
+      assetUrl: asset ? asset.browser_download_url : ""
+    };
   } catch (e) {
     addLog("error", "خطا در بررسی آپدیت GitHub", { error: String(e && e.message || e) });
     await saveSettings(false);
     return { ok: false, currentVersion, error: String(e && e.message || e), htmlUrl: "https://github.com/" + GITHUB_REPO + "/releases" };
   }
+}
+
+async function downloadSettingsBackup(reason = "update") {
+  const currentVersion = chrome.runtime.getManifest().version;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const payload = {
+    app: "Smart PAC Ultra",
+    version: currentVersion,
+    reason,
+    createdAt: new Date().toISOString(),
+    settings
+  };
+  const url = "data:application/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+  return await chrome.downloads.download({
+    url,
+    filename: `SmartPACProxyUltra/backups/settings-backup-v${currentVersion}-${stamp}.json`,
+    saveAs: false,
+    conflictAction: "uniquify"
+  });
+}
+
+async function downloadUpdate() {
+  const info = await checkForUpdate();
+  if (!info.ok) return info;
+  if (!info.updateAvailable) return Object.assign(info, { downloaded: false, message: "نسخه فعلی به‌روز است." });
+  if (!info.assetUrl) return Object.assign(info, { ok: false, downloaded: false, error: "در Release فایل ZIP پیدا نشد." });
+  const backupId = await downloadSettingsBackup("before-update-download").catch(() => null);
+  const fileName = info.assetName || `smart-pac-ultra-v${info.latestVersion}-release.zip`;
+  const downloadId = await chrome.downloads.download({
+    url: info.assetUrl,
+    filename: `SmartPACProxyUltra/releases/${fileName}`,
+    saveAs: true,
+    conflictAction: "uniquify"
+  });
+  settings.updates.lastDownloadedVersion = info.latestVersion;
+  addLog("update", "فایل آپدیت از GitHub دانلود شد", { version: info.latestVersion, downloadId, backupId });
+  await saveSettings(false);
+  return Object.assign(info, { downloaded: true, downloadId, backupId, message: "فایل آپدیت دانلود شد. برای نصب، ZIP را Extract و در chrome://extensions بارگذاری/Reload کنید." });
 }
 
 async function handleMessage(msg, sender) {
@@ -536,6 +617,13 @@ async function handleMessage(msg, sender) {
   if (type === "checkUpdate") {
     return await checkForUpdate();
   }
+  if (type === "downloadUpdate") {
+    return await downloadUpdate();
+  }
+  if (type === "backupSettings") {
+    const id = await downloadSettingsBackup("manual-backup");
+    return { ok: true, downloadId: id };
+  }
   if (type === "copyPac") {
     return { ok: true, pac: buildPac(settings.connectionMode === "smart" ? "smart" : "pac", currentProfile()) };
   }
@@ -604,14 +692,34 @@ chrome.proxy.onProxyError.addListener(async details => {
   await setIcon("error");
 });
 
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
   await loadSettings();
+  if (details && details.reason === "update") {
+    addLog("update", "افزونه به نسخه جدید ارتقا یافت و تنظیمات حفظ شد", { version: chrome.runtime.getManifest().version });
+    await saveSettings(false);
+  }
   await applyProxy();
+  try { await chrome.alarms.create("smartPacDailyUpdateCheck", { periodInMinutes: 24 * 60 }); } catch (e) {}
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await loadSettings();
   await applyProxy();
+  if (settings.updates && settings.updates.autoCheck) {
+    const last = settings.updates.lastCheck || 0;
+    if (Date.now() - last > 12 * 60 * 60 * 1000) checkForUpdate().catch(()=>{});
+  }
+});
+
+chrome.alarms.onAlarm.addListener(async alarm => {
+  if (!alarm || alarm.name !== "smartPacDailyUpdateCheck") return;
+  if (!settings) await loadSettings();
+  if (settings.updates && settings.updates.autoCheck) {
+    const info = await checkForUpdate().catch(() => null);
+    if (info && info.ok && info.updateAvailable && settings.updates.autoDownload) {
+      await downloadUpdate().catch(() => {});
+    }
+  }
 });
 
 loadSettings().then(applyProxy);
