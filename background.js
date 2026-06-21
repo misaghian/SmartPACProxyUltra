@@ -115,14 +115,33 @@ function getHostFromUrl(url) {
   }
 }
 
+function cleanRuleValue(raw) {
+  let value = String(raw || "").trim().toLowerCase();
+  if (!value || value.startsWith("#") || value.startsWith("//")) return "";
+  try {
+    if (/^https?:\/\//i.test(value)) {
+      const u = new URL(value);
+      return normalizeHost(u.hostname);
+    }
+  } catch (e) {}
+  value = value.replace(/^\[([^\]]+)\]$/, "$1").trim();
+  const isIpv4Cidr = /^\d{1,3}(\.\d{1,3}){3}\/(\d{1,2}|\d{1,3}(\.\d{1,3}){3})$/.test(value);
+  const isIpv4Range = /^\d{1,3}(\.\d{1,3}){3}\s*-\s*\d{1,3}(\.\d{1,3}){3}$/.test(value);
+  if (!isIpv4Cidr && !isIpv4Range && value.indexOf("/") !== -1) {
+    value = value.split("/")[0].trim();
+  }
+  if (!isIpv4Cidr && !isIpv4Range) {
+    value = value.replace(/:\d+$/, "");
+  }
+  return normalizeHost(value);
+}
+
 function cleanList(list) {
   if (!Array.isArray(list)) return [];
   const seen = new Set();
   const out = [];
   for (const raw of list) {
-    const line = String(raw || "").trim().toLowerCase();
-    if (!line || line.startsWith("#") || line.startsWith("//")) continue;
-    const value = line.replace(/^https?:\/\//, "").split("/")[0].trim();
+    const value = cleanRuleValue(raw);
     if (!value || seen.has(value)) continue;
     seen.add(value);
     out.push(value);
@@ -211,12 +230,12 @@ function buildPac(mode, profile = currentProfile()) {
   const lists = effectiveLists(profile);
   const token = proxyToken(profile);
   const fallback = profile.fallbackDirect ? token + "; DIRECT" : token;
-  const directDomains = mode === "smart" ? ["localhost", "127.0.0.1", "::1"] : lists.directDomains;
+  const directDomains = lists.directDomains;
   const proxyDomains = lists.proxyDomains;
   const protectedDomains = lists.protectedDomains;
   const ignoreDomains = lists.ignoreDomains;
   const defaultAction = mode === "smart" ? "DIRECT" : fallback;
-  return `
+  return String.raw`
 var PROXY = ${JSON.stringify(fallback)};
 var DEFAULT_ACTION = ${JSON.stringify(defaultAction)};
 var DIRECT_DOMAINS = ${JSON.stringify(directDomains)};
@@ -228,9 +247,14 @@ var PRIVATE_RANGES = [
   ["172.16.0.0","255.240.0.0"],["192.168.0.0","255.255.0.0"],
   ["169.254.0.0","255.255.0.0"],["100.64.0.0","255.192.0.0"]
 ];
-function normalizeHost(host){if(!host)return "";host=host.toLowerCase();if(host.charAt(0)==="["&&host.charAt(host.length-1)==="]")host=host.substring(1,host.length-1);if(host.charAt(host.length-1)===".")host=host.substring(0,host.length-1);return host;}
-function isIpAddress(host){return /^\\d{1,3}(\\.\\d{1,3}){3}$/.test(host);}
-function domainMatch(host,rule){host=normalizeHost(host);rule=normalizeHost(rule);if(!host||!rule)return false;if(rule.charAt(0)==="*"){var re="^"+rule.replace(/[.+?^$\\{\\}()|[\\]\\\\]/g,"\\\\$&").replace(/\\*/g,".*")+"$";return new RegExp(re).test(host);}if(rule.charAt(0)===".")return dnsDomainIs(host,rule)||host===rule.substring(1);return host===rule||dnsDomainIs(host,"."+rule);}
+function normalizeHost(host){if(!host)return "";host=String(host).toLowerCase();if(host.charAt(0)==="["&&host.charAt(host.length-1)==="]")host=host.substring(1,host.length-1);if(host.charAt(host.length-1)===".")host=host.substring(0,host.length-1);return host;}
+function isIpAddress(host){if(!/^\d{1,3}(\.\d{1,3}){3}$/.test(host))return false;var p=host.split(".");for(var i=0;i<p.length;i++){var n=parseInt(p[i],10);if(isNaN(n)||n<0||n>255)return false;}return true;}
+function ipToLong(ip){if(!isIpAddress(ip))return null;var p=ip.split(".");return (((parseInt(p[0],10)<<24)>>>0)+((parseInt(p[1],10)<<16)>>>0)+((parseInt(p[2],10)<<8)>>>0)+parseInt(p[3],10))>>>0;}
+function maskFromBits(bits){bits=parseInt(bits,10);if(isNaN(bits)||bits<0||bits>32)return null;if(bits===0)return 0;return (0xFFFFFFFF << (32-bits))>>>0;}
+function cidrMatch(ip,rule){var parts=rule.split("/");if(parts.length!==2)return false;var base=normalizeHost(parts[0]);var maskPart=normalizeHost(parts[1]);var ipLong=ipToLong(ip);var baseLong=ipToLong(base);if(ipLong===null||baseLong===null)return false;var mask=isIpAddress(maskPart)?ipToLong(maskPart):maskFromBits(maskPart);if(mask===null)return false;return (ipLong & mask)===(baseLong & mask);}
+function wildcardToRegExp(rule){return "^"+rule.replace(/[.+?^$\{\}()|[\]\\]/g,"\\$&").replace(/\*/g,".*")+"$";}
+function ipRuleMatch(ip,rule){rule=normalizeHost(rule);if(!isIpAddress(ip)||!rule)return false;if(rule.indexOf("-")>-1){var p=rule.split("-");if(p.length!==2)return false;var v=ipToLong(ip),a=ipToLong(normalizeHost(p[0])),b=ipToLong(normalizeHost(p[1]));if(v===null||a===null||b===null)return false;if(a>b){var t=a;a=b;b=t;}return v>=a&&v<=b;}if(rule.indexOf("/")>-1)return cidrMatch(ip,rule);if(rule.indexOf("*")>-1)return new RegExp(wildcardToRegExp(rule)).test(ip);return ip===rule;}
+function domainMatch(host,rule){host=normalizeHost(host);rule=normalizeHost(rule);if(!host||!rule)return false;if(isIpAddress(host)&&ipRuleMatch(host,rule))return true;if(rule.charAt(0)==="*"){return new RegExp(wildcardToRegExp(rule)).test(host);}if(rule.charAt(0)===".")return dnsDomainIs(host,rule)||host===rule.substring(1);return host===rule||dnsDomainIs(host,"."+rule);}
 function inList(host,list){for(var i=0;i<list.length;i++){if(domainMatch(host,list[i]))return true;}return false;}
 function ipInRanges(ip,ranges){if(!ip||!isIpAddress(ip))return false;for(var i=0;i<ranges.length;i++){if(isInNet(ip,ranges[i][0],ranges[i][1]))return true;}return false;}
 function isLocal(host){return isPlainHostName(host)||dnsDomainIs(host,".local")||dnsDomainIs(host,".lan")||dnsDomainIs(host,".internal")||dnsDomainIs(host,".intranet")||dnsDomainIs(host,".corp")||dnsDomainIs(host,".test");}
@@ -238,11 +262,11 @@ function FindProxyForURL(url,host){
   host=normalizeHost(host);
   if(host==="localhost"||host==="127.0.0.1"||host==="::1")return "DIRECT";
   if(isLocal(host))return "DIRECT";
+  if(inList(host,PROXY_DOMAINS))return PROXY;
+  if(inList(host,DIRECT_DOMAINS))return "DIRECT";
   if(isIpAddress(host))return ipInRanges(host,PRIVATE_RANGES)?"DIRECT":DEFAULT_ACTION;
   if(inList(host,PROTECTED_DOMAINS))return DEFAULT_ACTION;
   if(inList(host,IGNORE_DOMAINS))return DEFAULT_ACTION;
-  if(inList(host,PROXY_DOMAINS))return PROXY;
-  if(inList(host,DIRECT_DOMAINS))return "DIRECT";
   return DEFAULT_ACTION;
 }`.trim();
 }
